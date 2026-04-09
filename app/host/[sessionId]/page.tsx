@@ -83,12 +83,17 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
 
   const startGame = async () => {
     const { error } = await supabase
-      .from('game_sessions')
-      .update({ status: 'playing' })
-      .eq('id', sessionId);
+        .from('game_sessions')
+        .update({ status: 'playing' })
+        .eq('id', sessionId);
     
-    if (error) alert("Error starting game");
-  };
+    if (error) {
+        alert("Error: " + error.message);
+    } else {
+        // FORCE REDIRECT FOR HOST
+        window.location.href = `/host/${sessionId}/game`;
+    }
+    };
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center p-12 text-white">

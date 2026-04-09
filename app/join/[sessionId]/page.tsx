@@ -21,36 +21,25 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if user is already in a team for this specific session
-    const savedTeamId = localStorage.getItem('teamId');
-    const savedSessionId = localStorage.getItem('sessionId');
-    if (savedTeamId && savedSessionId === sessionId) {
-      setMyTeamId(savedTeamId);
-    }
-
-    const fetchTeams = async () => {
-      const { data } = await supabase
-        .from('teams')
-        .select('id, team_name, color_hex')
-        .eq('session_id', sessionId);
-      if (data) setExistingTeams(data);
-    };
-
-    fetchTeams();
-
-    const channel = supabase
-      .channel('join-lobby')
+    const statusChannel = supabase
+      .channel(`status-${sessionId}`)
       .on('postgres_changes', { 
-        event: 'INSERT', 
+        event: 'UPDATE', 
         schema: 'public', 
-        table: 'teams', 
-        filter: `session_id=eq.${sessionId}` 
+        table: 'game_sessions', 
+        filter: `id=eq.${sessionId}` 
       }, (payload) => {
-        setExistingTeams((prev) => [...prev, payload.new as Team]);
+        console.log("Session status changed:", payload.new.status);
+        if (payload.new.status === 'playing') {
+          // Hard redirect to the play screen
+          window.location.href = `/play/${sessionId}`;
+        }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status for session listener:", status);
+      });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(statusChannel); };
   }, [sessionId]);
 
   const handleJoinAction = async (targetTeamName: string) => {
