@@ -26,8 +26,13 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
   const [lastRoll, setLastRoll] = useState<number | null>(null);
 
   useEffect(() => {
-    const teamId = localStorage.getItem('teamId');
-    // setIsCaptain(captainStatus); <-- DELETE THIS LINE
+  const teamId = localStorage.getItem('teamId');
+  
+  if (!teamId) {
+    // If someone tries to go to /play without joining, send them to join
+    window.location.href = `/join/${sessionId}`;
+    return;
+  }
 
     const fetchTeamData = async () => {
       if (!teamId) return;

@@ -15,12 +15,45 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
   const [playerName, setPlayerName] = useState('');
   const [customTeamName, setCustomTeamName] = useState('');
   const [existingTeams, setExistingTeams] = useState<Team[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // UX State: Track if the user has already joined a team locally
+  const [isLoading, setIsLoading] = useState(true); // Start as loading
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
 
   useEffect(() => {
+    const checkExistingMembership = async () => {
+      const savedTeamId = localStorage.getItem('teamId');
+      const savedSessionId = localStorage.getItem('sessionId');
+
+      // 1. If we have saved data for THIS session
+      if (savedTeamId && savedSessionId === sessionId) {
+        // 2. Double check with DB that the session is still active/playing
+        const { data: session } = await supabase
+          .from('game_sessions')
+          .select('status')
+          .eq('id', sessionId)
+          .single();
+
+        if (session?.status === 'playing') {
+          // If the game is already live, teleport them straight to the gamepad
+          window.location.href = `/play/${sessionId}`;
+          return;
+        }
+        
+        // If game hasn't started yet, lock them into the "Waiting" view
+        setMyTeamId(savedTeamId);
+      }
+      
+      // 3. Fetch teams for the join list
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('id, team_name, color_hex')
+        .eq('session_id', sessionId);
+      
+      if (teams) setExistingTeams(teams);
+      setIsLoading(false);
+    };
+
+    checkExistingMembership();
+    
     const statusChannel = supabase
       .channel(`status-${sessionId}`)
       .on('postgres_changes', { 
