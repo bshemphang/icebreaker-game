@@ -1,102 +1,153 @@
 'use client';
+
 import { useEffect, useState, use } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 
-interface Team {
-  id: number;
-  team_name: string;
+interface Player {
+  id: string;
+  name: string;
+  is_captain: boolean;
 }
 
-// Notice we changed params to be a Promise here
+interface Team {
+  id: string;
+  team_name: string;
+  color_hex: string;
+  players: Player[]; // Fixed the 'any' by properly defining the nested array
+}
+
 export default function HostWaitingRoom({ params }: { params: Promise<{ sessionId: string }> }) {
-  // 1. Unwrap the params Promise using React's new `use()` hook
   const { sessionId } = use(params);
   
   const [teams, setTeams] = useState<Team[]>([]);
+  const [hostName, setHostName] = useState<string>('');
   const [joinUrl, setJoinUrl] = useState('');
 
   useEffect(() => {
     const initializeRoom = async () => {
-      // Use the unwrapped sessionId
+      const { data: sessionData } = await supabase
+        .from('game_sessions')
+        .select('host_name')
+        .eq('id', sessionId)
+        .single();
+      
+      if (sessionData) setHostName(sessionData.host_name);
+      fetchTeamsAndPlayers();
+      setJoinUrl(`${window.location.origin}/join/${sessionId}`);
+    };
+
+    const fetchTeamsAndPlayers = async () => {
       const { data } = await supabase
         .from('teams')
-        .select('*')
+        .select(`
+          id,
+          team_name,
+          color_hex,
+          players (
+            id,
+            name,
+            is_captain
+          )
+        `)
         .eq('session_id', sessionId);
       
-      if (data) setTeams(data);
-      
-      setJoinUrl(`${window.location.origin}/join/${sessionId}`);
+      // Explicitly cast the data to our Team interface to satisfy the linter
+      if (data) setTeams(data as unknown as Team[]);
     };
 
     initializeRoom();
 
     const channel = supabase
-      .channel('public:teams')
+      .channel(`lobby-${sessionId}`)
       .on('postgres_changes', { 
-        event: 'INSERT', 
+        event: '*', 
         schema: 'public', 
         table: 'teams',
         filter: `session_id=eq.${sessionId}` 
-      }, (payload) => {
-        setTeams((current) => [...current, payload.new as Team]);
-      })
+      }, () => fetchTeamsAndPlayers())
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'players',
+        filter: `session_id=eq.${sessionId}` 
+      }, () => fetchTeamsAndPlayers())
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [sessionId]); // Add sessionId to the dependency array
+  }, [sessionId]);
 
   const startGame = async () => {
-    alert("Game Started! Next, we will build the Game Board.");
+    const { error } = await supabase
+      .from('game_sessions')
+      .update({ status: 'playing' })
+      .eq('id', sessionId);
+    
+    if (error) alert("Error starting game");
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8">
-      <h1 className="text-4xl font-bold text-blue-600 mb-8">Innovation Icebreaker</h1>
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center p-12 text-white">
+      <div className="text-center mb-12">
+        <p className="text-blue-400 font-bold tracking-widest uppercase text-sm mb-2">Facilitator Mode</p>
+        {/* FIX 2: Escaped apostrophe for "Host's Room" using &apos; */}
+        <h1 className="text-5xl font-black">{hostName || 'Innovation Session'}&apos;s Room</h1>
+      </div>
       
-      <div className="bg-white p-8 rounded-xl shadow-lg flex flex-col items-center max-w-lg w-full text-slate-800">
-        <h2 className="text-2xl font-semibold mb-6">Scan to Join!</h2>
-        
-        {/* QR Code Component */}
-        <div className="p-4 border-4 border-blue-100 rounded-lg mb-6 bg-white flex items-center justify-center min-w-[280px] min-h-[280px]">
-          {joinUrl ? (
-            <QRCodeSVG value={joinUrl} size={256} level="H" />
-          ) : (
-            <div className="w-64 h-64 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center">
-              <span className="text-slate-400 font-medium">Generating QR...</span>
-            </div>
-          )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl w-full">
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl flex flex-col items-center text-slate-900 h-fit">
+          <h2 className="text-3xl font-black mb-8">Join the Game</h2>
+          <div className="p-6 bg-slate-50 rounded-3xl border-4 border-dashed border-blue-100 mb-8">
+            {joinUrl && <QRCodeSVG value={joinUrl} size={320} level="H" />}
+          </div>
+          <p className="text-slate-400 font-mono text-sm break-all bg-slate-100 p-4 rounded-xl w-full text-center">
+            {joinUrl}
+          </p>
         </div>
-        
-        <p className="text-gray-500 mb-8 font-mono text-center break-all">
-          {joinUrl || 'Loading URL...'}
-        </p>
 
-        {/* Live Team Roster */}
-        <div className="w-full">
-          <h3 className="text-xl font-bold border-b pb-2 mb-4">Teams Joined: {teams.length}</h3>
-          <ul className="space-y-2 mb-6 max-h-48 overflow-y-auto">
+        <div className="space-y-6">
+          <div className="flex justify-between items-end border-b border-slate-700 pb-4">
+            <h2 className="text-3xl font-bold">Teams</h2>
+            <span className="bg-blue-600 px-4 py-1 rounded-full text-sm font-bold">
+              {teams.length} Created
+            </span>
+          </div>
+
+          <div className="grid gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
             {teams.length === 0 ? (
-              <li className="text-gray-400 italic text-center py-2">Waiting for teams to scan...</li>
+              <div className="py-20 text-center border-2 border-dashed border-slate-800 rounded-3xl">
+                <p className="text-slate-500 text-lg">Waiting for first team to form...</p>
+              </div>
             ) : (
               teams.map((team) => (
-                <li key={team.id} className="bg-blue-50 text-blue-700 px-4 py-2 rounded-md font-medium shadow-sm">
-                  {team.team_name}
-                </li>
+                <div key={team.id} className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-black" style={{ color: team.color_hex }}>
+                      {team.team_name}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {team.players.map((player) => (
+                      <span key={player.id} className={`px-4 py-2 rounded-xl text-sm font-bold ${player.is_captain ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                        {player.name} {player.is_captain && '👑'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ))
             )}
-          </ul>
-        </div>
+          </div>
 
-        <button 
-          onClick={startGame}
-          disabled={teams.length === 0}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full transition-colors w-full text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {teams.length === 0 ? 'Waiting for Teams...' : 'Start Game'}
-        </button>
+          <button 
+            onClick={startGame}
+            disabled={teams.length === 0}
+            className="w-full bg-green-500 hover:bg-green-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 font-black py-6 rounded-4xl text-2xl transition-all shadow-xl active:scale-95"
+          >
+            {teams.length === 0 ? 'WAITING FOR TEAMS...' : 'START CHALLENGE'}
+          </button>
+        </div>
       </div>
     </div>
   );
