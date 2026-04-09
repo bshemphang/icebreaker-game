@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 interface Team {
   id: string;
   team_name: string;
+  color_hex: string; // Added for UI colors
 }
 
 export default function JoinGame({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -15,20 +16,28 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
   const [customTeamName, setCustomTeamName] = useState('');
   const [existingTeams, setExistingTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // UX State: Track if the user has already joined a team locally
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
 
-  // 1. Fetch teams already in this session
   useEffect(() => {
+    // Check if user is already in a team for this specific session
+    const savedTeamId = localStorage.getItem('teamId');
+    const savedSessionId = localStorage.getItem('sessionId');
+    if (savedTeamId && savedSessionId === sessionId) {
+      setMyTeamId(savedTeamId);
+    }
+
     const fetchTeams = async () => {
       const { data } = await supabase
         .from('teams')
-        .select('id, team_name')
+        .select('id, team_name, color_hex')
         .eq('session_id', sessionId);
       if (data) setExistingTeams(data);
     };
 
     fetchTeams();
 
-    // Listen for new teams being created by others
     const channel = supabase
       .channel('join-lobby')
       .on('postgres_changes', { 
@@ -49,7 +58,10 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
     setIsLoading(true);
 
     try {
-      // 1. Get or Create Team
+      // 1. Get or Create Team with a dynamic color
+      const colors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#f97316'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
       let { data: team } = await supabase
         .from('teams')
         .select('id')
@@ -60,7 +72,11 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
       if (!team) {
         const { data: newTeam, error: createError } = await supabase
           .from('teams')
-          .insert([{ session_id: sessionId, team_name: targetTeamName }])
+          .insert([{ 
+            session_id: sessionId, 
+            team_name: targetTeamName,
+            color_hex: randomColor 
+          }])
           .select().single();
         if (createError) throw createError;
         team = newTeam;
@@ -81,7 +97,6 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
 
       let finalIsCaptain = true;
 
-      // If error 23505 (Unique Constraint), someone else is captain
       if (joinError && joinError.code === '23505') {
         await supabase.from('players').insert([{ 
           session_id: sessionId, 
@@ -92,12 +107,13 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
         finalIsCaptain = false;
       }
 
-      // 3. Save State
+      // 3. Save State & LOCK UI
       localStorage.setItem('playerId', player?.id || '');
       localStorage.setItem('teamId', team.id);
+      localStorage.setItem('sessionId', sessionId);
       localStorage.setItem('isCaptain', finalIsCaptain.toString());
-
-      alert(finalIsCaptain ? "🚀 You are the Team Captain!" : "✅ Joined the Team!");
+      
+      setMyTeamId(team.id); // Trigger the "Waiting" view
       
     } catch (error) {
       console.error('Join Error:', error);
@@ -107,6 +123,34 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
     }
   };
 
+  // --- WAITING VIEW (Once joined, this replaces the form) ---
+  if (myTeamId) {
+    const myTeam = existingTeams.find(t => t.id === myTeamId);
+    return (
+      <main className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white">
+        <div 
+          className="w-48 h-48 rounded-full border-8 mb-8 animate-pulse flex items-center justify-center text-6xl shadow-[0_0_30px_rgba(0,0,0,0.5)]" 
+          style={{ borderColor: myTeam?.color_hex || '#3b82f6' }}
+        >
+          🎮
+        </div>
+        <h1 className="text-4xl font-black mb-2 tracking-tight">YOU&apos;RE IN!</h1>
+        <p className="text-slate-400 text-lg">
+          Ready to play with <span className="font-bold" style={{ color: myTeam?.color_hex }}>{myTeam?.team_name || 'your team'}</span>
+        </p>
+        <div className="mt-12 space-y-2">
+            <div className="flex justify-center space-x-1">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+            <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Waiting for host to start</p>
+        </div>
+      </main>
+    );
+  }
+
+  // --- JOINING VIEW ---
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-6 pt-12">
       <div className="w-full max-w-sm space-y-8">
@@ -115,7 +159,6 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
           <p className="text-slate-400">Enter your name to get started</p>
         </div>
 
-        {/* Player Name Input */}
         <div className="bg-slate-800 p-2 rounded-2xl border border-slate-700">
           <input
             type="text"
@@ -127,7 +170,6 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
           />
         </div>
 
-        {/* Existing Teams List */}
         <div className="space-y-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">
             Pick an Existing Team
@@ -141,16 +183,16 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
                   key={team.id}
                   disabled={isLoading || !playerName.trim()}
                   onClick={() => handleJoinAction(team.team_name)}
-                  className="w-full bg-slate-800 hover:bg-slate-700 p-4 rounded-xl text-left border border-slate-700 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full bg-slate-800 hover:bg-slate-700 p-5 rounded-xl text-left border-l-8 transition-all active:scale-95 disabled:opacity-50"
+                  style={{ borderLeftColor: team.color_hex }}
                 >
-                  <span className="font-bold text-lg">Join {team.team_name}</span>
+                  <span className="font-black text-xl">Join {team.team_name}</span>
                 </button>
               ))
             )}
           </div>
         </div>
 
-        {/* Create Custom Team */}
         <div className="space-y-4 pt-6 border-t border-slate-800">
           <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500 ml-1">
             Or Create a New Team
@@ -161,7 +203,7 @@ export default function JoinGame({ params }: { params: Promise<{ sessionId: stri
               value={customTeamName}
               onChange={(e) => setCustomTeamName(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Team Name (e.g. Dream Team)"
+              placeholder="Team Name (e.g. Innovators)"
             />
             <button
               disabled={isLoading || !playerName.trim() || !customTeamName.trim()}
