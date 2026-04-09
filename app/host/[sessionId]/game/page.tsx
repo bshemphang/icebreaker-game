@@ -35,15 +35,20 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
 
     setIsMoving(true);
     
+    // Fetch all active prompts for the specific category
     const { data } = await supabase
       .from('prompts')
       .select('category, content')
       .eq('category', spaceType === 'Wildcard' ? 'Move' : spaceType)
-      .limit(1);
+      .eq('is_active', true);
 
-    if (data && data[0]) {
+    if (data && data.length > 0) {
+      // Pick a random prompt from the list
+      const randomIndex = Math.floor(Math.random() * data.length);
+      const randomPrompt = data[randomIndex];
+
       setTimeout(() => {
-        setActivePrompt(data[0]);
+        setActivePrompt(randomPrompt);
         setIsMoving(false);
       }, 1000);
     } else {
@@ -53,21 +58,18 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
 
   useEffect(() => {
     const fetchGameData = async () => {
-      // Fetch Teams
       const { data: teamData } = await supabase
         .from('teams')
         .select('id, team_name, color_hex, board_position')
         .eq('session_id', sessionId);
       if (teamData) setTeams(teamData as Team[]);
 
-      // Fetch Session State (Current Turn)
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('current_turn_team_id')
         .eq('id', sessionId)
         .single();
       
-      // If no turn is set yet, set it to the first team
       if (sessionData && !sessionData.current_turn_team_id && teamData && teamData.length > 0) {
         await supabase
           .from('game_sessions')
@@ -100,6 +102,7 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
     setActivePrompt(null);
     if (teams.length === 0) return;
 
+    // Logic to move turn to the next team
     const currentIndex = teams.findIndex(t => t.id === currentTurnId);
     const nextIndex = (currentIndex + 1) % teams.length;
     const nextTeamId = teams[nextIndex].id;
@@ -112,11 +115,17 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
 
   return (
     <main className="min-h-screen bg-slate-900 p-8 text-white overflow-hidden flex flex-col">
+      {isMoving && (
+        <div className="fixed top-4 right-4 animate-pulse text-blue-400 font-bold z-50">
+          TEAM IS MOVING...
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-blue-500 uppercase">Shared Board</h1>
           <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">
-            Current Turn: {teams.find(t => t.id === currentTurnId)?.team_name || 'Loading...'}
+            Turn: {teams.find(t => t.id === currentTurnId)?.team_name || '...'}
           </p>
         </div>
         <div className="flex gap-4">
@@ -131,7 +140,7 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
 
       <div className="grid grid-cols-5 gap-4 flex-1 relative">
         {BOARD_SPACES.map((type, index) => (
-          <div key={index} className={`relative rounded-3xl border-2 flex flex-col items-center justify-center p-4 ${index === 0 ? 'bg-green-500/20 border-green-500' : index === 19 ? 'bg-red-500/20 border-red-500' : 'bg-slate-800 border-slate-700'}`}>
+          <div key={index} className={`relative rounded-3xl border-2 flex flex-col items-center justify-center p-4 transition-all ${index === 0 ? 'bg-green-500/20 border-green-500' : index === 19 ? 'bg-red-500/20 border-red-500' : 'bg-slate-800 border-slate-700'}`}>
             <span className="text-xs font-black opacity-20 absolute top-4 left-4">#{index + 1}</span>
             <span className="font-black text-xl tracking-widest">{type.toUpperCase()}</span>
             <div className="flex flex-wrap gap-1 mt-2 justify-center">
@@ -147,7 +156,7 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
             <div className="bg-white text-slate-900 p-12 rounded-[3rem] max-w-2xl w-full shadow-2xl text-center space-y-6 animate-in zoom-in duration-300">
               <span className="bg-blue-600 text-white px-6 py-2 rounded-full font-black uppercase tracking-widest">{activePrompt.category}</span>
               <h2 className="text-4xl font-black leading-tight">{activePrompt.content}</h2>
-              <button onClick={nextTurn} className="mt-8 bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all">
+              <button onClick={nextTurn} className="mt-8 bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">
                 COMPLETE & NEXT TURN
               </button>
             </div>

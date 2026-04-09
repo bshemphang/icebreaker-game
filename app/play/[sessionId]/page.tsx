@@ -34,7 +34,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
     }
 
     const fetchData = async () => {
-      // Fetch My Team Data
       const { data: teamData } = await supabase
         .from('teams')
         .select('*')
@@ -42,7 +41,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         .single();
       if (teamData) setMyTeam(teamData as Team);
 
-      // Fetch Session Turn Data
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('current_turn_team_id')
@@ -53,7 +51,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
 
     fetchData();
 
-    // Listen for Team Updates & Session Turn Updates
     const channel = supabase
       .channel('player-sync')
       .on('postgres_changes', { 
@@ -70,9 +67,13 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         table: 'game_sessions', 
         filter: `id=eq.${sessionId}` 
       }, (payload) => {
-        setCurrentTurnId(payload.new.current_turn_team_id);
-        // Reset the dice visual if a new turn starts
-        if (payload.new.current_turn_team_id === teamId) {
+        const newTurnId = payload.new.current_turn_team_id;
+        setCurrentTurnId(newTurnId);
+        
+        // FIX: Unlock the dice only when the turn switches
+        setIsRolling(false); 
+        
+        if (newTurnId === teamId) {
             setLastRoll(null);
         }
       })
@@ -85,25 +86,25 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
     const isMyTurn = myTeam?.id === currentTurnId;
     if (!myTeam || isRolling || !isMyTurn) return;
     
-    setIsRolling(true);
+    setIsRolling(true); // Permanent lock until Host clicks Next Turn
+    
     const roll = Math.floor(Math.random() * 6) + 1;
     setLastRoll(roll);
 
     const newPosition = Math.min(myTeam.board_position + roll, 19);
 
     const { error } = await supabase
-      .from('teams')
-      .update({ board_position: newPosition })
-      .eq('id', myTeam.id);
+        .from('teams')
+        .update({ board_position: newPosition })
+        .eq('id', myTeam.id);
 
-    if (error) alert("Roll failed to sync!");
-
-    setTimeout(() => {
-      setIsRolling(false);
-    }, 2000);
+    if (error) {
+        alert("Roll failed!");
+        setIsRolling(false); // Unlock only on error
+    }
   };
 
-  if (!myTeam) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black animate-pulse uppercase tracking-widest">Syncing Gear...</div>;
+  if (!myTeam) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black animate-pulse">Syncing Gear...</div>;
 
   const isMyTurn = myTeam.id === currentTurnId;
 
@@ -114,7 +115,7 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         <div className="w-4 h-4 rounded-full mx-auto mb-2" style={{ backgroundColor: myTeam.color_hex }} />
         <h1 className="text-xl font-black uppercase tracking-widest">{myTeam.team_name}</h1>
         <p className={`text-xs font-bold mt-1 ${isMyTurn ? 'text-green-400 animate-pulse' : 'text-slate-500'}`}>
-          {isMyTurn ? "IT'S YOUR TURN!" : "WAITING FOR YOUR TURN..."}
+          {isMyTurn ? (isRolling ? "DICE SENT!" : "IT'S YOUR TURN!") : "WAITING FOR YOUR TURN..."}
         </p>
       </div>
 
@@ -131,13 +132,15 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
             onClick={rollDice}
             disabled={isRolling || !isMyTurn}
             className={`w-64 h-64 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all border-b-8 active:border-b-0 active:translate-y-2 ${
-              isMyTurn 
+              isMyTurn && !isRolling
                 ? "bg-blue-600 border-blue-800" 
                 : "bg-slate-800 border-slate-900 grayscale opacity-30 cursor-not-allowed"
             }`}
           >
-            <span className="text-4xl mb-2">{isMyTurn ? "🎲" : "🔒"}</span>
-            <span className="text-2xl font-black italic">{isMyTurn ? "ROLL DICE" : "LOCKED"}</span>
+            <span className="text-5xl mb-2">{isMyTurn ? (isRolling ? "✅" : "🎲") : "🔒"}</span>
+            <span className="text-2xl font-black italic">
+                {isRolling ? "SENT!" : isMyTurn ? "ROLL DICE" : "LOCKED"}
+            </span>
           </button>
         ) : (
           <div className="text-center space-y-4 opacity-50">
