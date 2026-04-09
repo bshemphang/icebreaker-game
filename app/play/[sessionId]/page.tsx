@@ -13,7 +13,6 @@ interface Team {
 export default function Gamepad({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params);
   
-  // 1. Initial State from LocalStorage (Calculated once)
   const [isCaptain] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('isCaptain') === 'true';
@@ -22,36 +21,59 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
   });
 
   const [myTeam, setMyTeam] = useState<Team | null>(null);
+  const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [lastRoll, setLastRoll] = useState<number | null>(null);
 
   useEffect(() => {
-  const teamId = localStorage.getItem('teamId');
-  
-  if (!teamId) {
-    // If someone tries to go to /play without joining, send them to join
-    window.location.href = `/join/${sessionId}`;
-    return;
-  }
+    const teamId = localStorage.getItem('teamId');
+    
+    if (!teamId) {
+      window.location.href = `/join/${sessionId}`;
+      return;
+    }
 
-    const fetchTeamData = async () => {
-      if (!teamId) return;
-      const { data } = await supabase
+    const fetchData = async () => {
+      // Fetch My Team Data
+      const { data: teamData } = await supabase
         .from('teams')
         .select('*')
         .eq('id', teamId)
         .single();
-      if (data) setMyTeam(data as Team);
+      if (teamData) setMyTeam(teamData as Team);
+
+      // Fetch Session Turn Data
+      const { data: sessionData } = await supabase
+        .from('game_sessions')
+        .select('current_turn_team_id')
+        .eq('id', sessionId)
+        .single();
+      if (sessionData) setCurrentTurnId(sessionData.current_turn_team_id);
     };
 
-    fetchTeamData();
+    fetchData();
 
-    // Listen for board updates (in case other teams move)
+    // Listen for Team Updates & Session Turn Updates
     const channel = supabase
       .channel('player-sync')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'teams' }, (payload) => {
-        if (payload.new.id === teamId) {
-          setMyTeam(payload.new as Team);
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'teams', 
+        filter: `id=eq.${teamId}` 
+      }, (payload) => {
+        setMyTeam(payload.new as Team);
+      })
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'game_sessions', 
+        filter: `id=eq.${sessionId}` 
+      }, (payload) => {
+        setCurrentTurnId(payload.new.current_turn_team_id);
+        // Reset the dice visual if a new turn starts
+        if (payload.new.current_turn_team_id === teamId) {
+            setLastRoll(null);
         }
       })
       .subscribe();
@@ -60,36 +82,30 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
   }, [sessionId]);
 
   const rollDice = async () => {
-    if (!myTeam || isRolling) return;
+    const isMyTurn = myTeam?.id === currentTurnId;
+    if (!myTeam || isRolling || !isMyTurn) return;
     
     setIsRolling(true);
-    
-    // 1. Simulate a local roll for juice/UX
     const roll = Math.floor(Math.random() * 6) + 1;
     setLastRoll(roll);
 
-    // 2. Calculate new position (capped at 19 for the 20-space board)
     const newPosition = Math.min(myTeam.board_position + roll, 19);
 
-    // 3. Update Supabase
     const { error } = await supabase
       .from('teams')
-      .update({ 
-        board_position: newPosition,
-      })
+      .update({ board_position: newPosition })
       .eq('id', myTeam.id);
 
-    if (error) {
-      alert("Roll failed to sync!");
-    }
+    if (error) alert("Roll failed to sync!");
 
-    // Wait for animation to finish before allowing next roll
     setTimeout(() => {
       setIsRolling(false);
     }, 2000);
   };
 
-  if (!myTeam) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">Loading Gear...</div>;
+  if (!myTeam) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black animate-pulse uppercase tracking-widest">Syncing Gear...</div>;
+
+  const isMyTurn = myTeam.id === currentTurnId;
 
   return (
     <main className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-between p-8">
@@ -97,7 +113,9 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
       <div className="w-full text-center py-4 border-b border-slate-800">
         <div className="w-4 h-4 rounded-full mx-auto mb-2" style={{ backgroundColor: myTeam.color_hex }} />
         <h1 className="text-xl font-black uppercase tracking-widest">{myTeam.team_name}</h1>
-        <p className="text-xs text-slate-500 font-bold">POSITION: {myTeam.board_position + 1} / 20</p>
+        <p className={`text-xs font-bold mt-1 ${isMyTurn ? 'text-green-400 animate-pulse' : 'text-slate-500'}`}>
+          {isMyTurn ? "IT'S YOUR TURN!" : "WAITING FOR YOUR TURN..."}
+        </p>
       </div>
 
       {/* Action Area */}
@@ -111,28 +129,32 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         {isCaptain ? (
           <button
             onClick={rollDice}
-            disabled={isRolling}
-            className="w-64 h-64 rounded-full bg-blue-600 border-b-8 border-blue-800 flex flex-col items-center justify-center shadow-2xl active:translate-y-2 active:border-b-0 transition-all disabled:opacity-50 disabled:grayscale"
+            disabled={isRolling || !isMyTurn}
+            className={`w-64 h-64 rounded-full flex flex-col items-center justify-center shadow-2xl transition-all border-b-8 active:border-b-0 active:translate-y-2 ${
+              isMyTurn 
+                ? "bg-blue-600 border-blue-800" 
+                : "bg-slate-800 border-slate-900 grayscale opacity-30 cursor-not-allowed"
+            }`}
           >
-            <span className="text-4xl mb-2">🎲</span>
-            <span className="text-2xl font-black italic">ROLL DICE</span>
+            <span className="text-4xl mb-2">{isMyTurn ? "🎲" : "🔒"}</span>
+            <span className="text-2xl font-black italic">{isMyTurn ? "ROLL DICE" : "LOCKED"}</span>
           </button>
         ) : (
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto animate-pulse">
-              <span className="text-3xl">⏳</span>
+          <div className="text-center space-y-4 opacity-50">
+            <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto">
+              <span className="text-3xl">👥</span>
             </div>
             <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">
-              Waiting for Captain to roll...
+              Team Member View
             </p>
           </div>
         )}
       </div>
 
       {/* Footer Info */}
-      <div className="w-full bg-slate-800/50 p-4 rounded-3xl text-center">
-        <p className="text-xs text-slate-500 font-bold">
-          {isCaptain ? "YOU ARE THE CAPTAIN" : "YOU ARE A TEAM MEMBER"}
+      <div className="w-full bg-slate-800/50 p-4 rounded-3xl text-center border border-slate-700">
+        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">
+          {isCaptain ? "👑 Team Captain" : "👥 Crew Member"}
         </p>
       </div>
     </main>
