@@ -28,32 +28,20 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
   const [activePrompt, setActivePrompt] = useState<Prompt | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
+  const [isWildcardChoice, setIsWildcardChoice] = useState(false);
 
-  const handleLanding = useCallback(async (position: number) => {
-  const spaceType = BOARD_SPACES[position];
-  if (spaceType === 'Start') return; // Removed 'Finish' check
+  // Helper to fetch a random prompt for a category
+  const fetchPrompt = async (category: string) => {
+    setIsWildcardChoice(false);
+    setIsMoving(true);
 
-  setIsMoving(true);
-  
-  let categoryToFetch = spaceType;
-  if (spaceType === 'Wildcard') categoryToFetch = 'Move'; // Temporary logic
-  if (spaceType === 'Session Complete') {
-    setActivePrompt({ 
-        category: 'FINALE', 
-        content: "Mission Accomplished! You've successfully reset your thinking. Ready to start ideating?" 
-    });
-    setIsMoving(false);
-    return;
-  }
-
-  const { data } = await supabase
-    .from('prompts')
-    .select('category, content')
-    .eq('category', categoryToFetch)
-    .eq('is_active', true);
+    const { data } = await supabase
+      .from('prompts')
+      .select('category, content')
+      .eq('category', category)
+      .eq('is_active', true);
 
     if (data && data.length > 0) {
-      // Pick a random prompt from the list
       const randomIndex = Math.floor(Math.random() * data.length);
       const randomPrompt = data[randomIndex];
 
@@ -64,6 +52,26 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
     } else {
       setIsMoving(false);
     }
+  };
+
+  const handleLanding = useCallback(async (position: number) => {
+    const spaceType = BOARD_SPACES[position];
+    if (spaceType === 'Start') return;
+
+    if (spaceType === 'Wildcard') {
+      setIsWildcardChoice(true);
+      return;
+    }
+
+    if (spaceType === 'Session Complete') {
+      setActivePrompt({ 
+          category: 'FINALE', 
+          content: "Innovation Mode Activated! You've successfully reset your thinking. Ready to start ideating?" 
+      });
+      return;
+    }
+
+    fetchPrompt(spaceType);
   }, []);
 
   useEffect(() => {
@@ -81,10 +89,7 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
         .single();
       
       if (sessionData && !sessionData.current_turn_team_id && teamData && teamData.length > 0) {
-        await supabase
-          .from('game_sessions')
-          .update({ current_turn_team_id: teamData[0].id })
-          .eq('id', sessionId);
+        await supabase.from('game_sessions').update({ current_turn_team_id: teamData[0].id }).eq('id', sessionId);
         setCurrentTurnId(teamData[0].id);
       } else if (sessionData) {
         setCurrentTurnId(sessionData.current_turn_team_id);
@@ -112,7 +117,6 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
     setActivePrompt(null);
     if (teams.length === 0) return;
 
-    // Logic to move turn to the next team
     const currentIndex = teams.findIndex(t => t.id === currentTurnId);
     const nextIndex = (currentIndex + 1) % teams.length;
     const nextTeamId = teams[nextIndex].id;
@@ -124,54 +128,94 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
   };
 
   return (
-    <main className="min-h-screen bg-slate-900 p-8 text-white overflow-hidden flex flex-col">
-      {isMoving && (
-        <div className="fixed top-4 right-4 animate-pulse text-blue-400 font-bold z-50">
-          TEAM IS MOVING...
-        </div>
-      )}
-
-      <div className="flex justify-between items-center mb-8">
+    <main className="min-h-screen bg-slate-900 p-8 text-white overflow-hidden flex flex-col font-sans">
+      {/* Facilitator Header */}
+      <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-3xl font-black tracking-tighter text-blue-500 uppercase">Shared Board</h1>
-          <p className="text-slate-400 text-sm font-bold uppercase tracking-widest">
-            Turn: {teams.find(t => t.id === currentTurnId)?.team_name || '...'}
-          </p>
+          <h1 className="text-4xl font-black tracking-tighter text-blue-500 uppercase italic">IceBreaker HQ</h1>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mt-1">Facilitator View</p>
         </div>
         <div className="flex gap-4">
           {teams.map(t => (
-            <div key={t.id} className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${t.id === currentTurnId ? 'bg-white text-slate-900 border-white scale-110 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-50'}`}>
+            <div key={t.id} className={`flex items-center gap-3 px-5 py-2 rounded-full border transition-all duration-500 ${t.id === currentTurnId ? 'bg-white text-slate-900 border-white scale-110 shadow-[0_0_20px_rgba(255,255,255,0.3)]' : 'bg-slate-800 border-slate-700 opacity-40'}`}>
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color_hex }} />
-              <span className="text-sm font-bold">{t.team_name}</span>
+              <span className="text-sm font-black uppercase">{t.team_name}</span>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Grid Board */}
       <div className="grid grid-cols-5 gap-4 flex-1 relative">
         {BOARD_SPACES.map((type, index) => (
-          <div key={index} className={`relative rounded-3xl border-2 flex flex-col items-center justify-center p-4 transition-all ${index === 0 ? 'bg-green-500/20 border-green-500' : index === 19 ? 'bg-red-500/20 border-red-500' : 'bg-slate-800 border-slate-700'}`}>
-            <span className="text-xs font-black opacity-20 absolute top-4 left-4">#{index + 1}</span>
-            <span className="font-black text-xl tracking-widest">{type.toUpperCase()}</span>
-            <div className="flex flex-wrap gap-1 mt-2 justify-center">
+          <div key={index} className={`relative rounded-[2rem] border-2 flex flex-col items-center justify-center p-4 transition-all duration-500 ${index === 0 ? 'bg-green-500/10 border-green-500/50' : index === 19 ? 'bg-blue-500/10 border-blue-500/50' : 'bg-slate-800/50 border-slate-700/50'}`}>
+            <span className="text-[10px] font-black opacity-30 absolute top-4 left-4">#{index + 1}</span>
+            <span className="font-black text-xs tracking-widest opacity-60 mb-2 uppercase">{type}</span>
+            
+            <div className="flex flex-wrap gap-1 justify-center min-h-[40px]">
               {teams.filter(t => t.board_position === index).map(t => (
-                <div key={t.id} className={`w-8 h-8 rounded-full border-4 border-white shadow-lg transition-all duration-500 ${t.id === currentTurnId ? 'animate-bounce z-10 scale-125' : 'opacity-80'}`} style={{ backgroundColor: t.color_hex }} />
+                <div 
+                  key={t.id} 
+                  className={`w-10 h-10 rounded-full border-4 border-white shadow-xl transition-all duration-700 ${t.id === currentTurnId ? 'animate-bounce z-10 scale-125' : 'scale-90 opacity-80'}`} 
+                  style={{ backgroundColor: t.color_hex }} 
+                />
               ))}
             </div>
           </div>
         ))}
 
+        {/* Wildcard Choice Modal */}
+        {isWildcardChoice && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-xl rounded-[3rem]">
+            <div className="text-center animate-in zoom-in duration-300">
+              <h2 className="text-7xl font-black text-white mb-4 italic tracking-tighter">WILDCARD!</h2>
+              <p className="text-blue-400 font-bold uppercase tracking-[0.3em] mb-12">Team, choose your destiny:</p>
+              <div className="flex gap-8">
+                {['Move', 'Talk', 'Create'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => fetchPrompt(cat)}
+                    className="group bg-slate-800 border-2 border-slate-700 p-12 rounded-[3rem] hover:border-blue-500 hover:bg-slate-700 transition-all active:scale-90"
+                  >
+                    <span className="block text-5xl mb-4">{cat === 'Move' ? '🏃‍♂️' : cat === 'Talk' ? '💬' : '🎨'}</span>
+                    <span className="text-xl font-black text-white uppercase tracking-widest">{cat}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Prompt Card Modal */}
         {activePrompt && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-12">
-            <div className="bg-white text-slate-900 p-12 rounded-[3rem] max-w-2xl w-full shadow-2xl text-center space-y-6 animate-in zoom-in duration-300">
-              <span className="bg-blue-600 text-white px-6 py-2 rounded-full font-black uppercase tracking-widest">{activePrompt.category}</span>
-              <h2 className="text-4xl font-black leading-tight">{activePrompt.content}</h2>
-              <button onClick={nextTurn} className="mt-8 bg-slate-900 text-white px-12 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-12 rounded-[3rem]">
+            <div className="bg-white text-slate-900 p-16 rounded-[4rem] max-w-3xl w-full shadow-2xl text-center space-y-8 animate-in zoom-in duration-300">
+              <span className="bg-blue-600 text-white px-8 py-2 rounded-full font-black uppercase tracking-[0.2em] text-sm">
+                {activePrompt.category}
+              </span>
+              <h2 className="text-5xl font-black leading-tight tracking-tight text-slate-900">
+                &ldquo;{activePrompt.content}&rdquo;
+              </h2>
+              <button 
+                onClick={nextTurn} 
+                className="mt-12 bg-slate-900 text-white px-16 py-6 rounded-3xl font-black text-xl hover:bg-blue-600 transition-all shadow-xl active:scale-95"
+              >
                 COMPLETE & NEXT TURN
               </button>
             </div>
           </div>
         )}
+      </div>
+
+      {/* Footer Info */}
+      <div className="mt-8 flex justify-between items-center opacity-50">
+        <p className="text-[10px] font-bold uppercase tracking-widest">Innovation Session Icebreaker MVP</p>
+        <button 
+           onClick={() => {if(confirm("End game session?")) window.location.href='/'}}
+           className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-full hover:bg-white hover:text-slate-900 transition-all"
+        >
+          FORCE END SESSION
+        </button>
       </div>
     </main>
   );
