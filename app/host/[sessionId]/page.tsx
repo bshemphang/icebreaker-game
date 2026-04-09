@@ -38,22 +38,24 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
     };
 
     const fetchTeamsAndPlayers = async () => {
-      const { data } = await supabase
-        .from('teams')
-        .select(`
-          id,
-          team_name,
-          color_hex,
-          players (
+        const { data } = await supabase
+            .from('teams')
+            .select(`
             id,
-            name,
-            is_captain
-          )
-        `)
-        .eq('session_id', sessionId);
-      
-      // Explicitly cast the data to our Team interface to satisfy the linter
-      if (data) setTeams(data as unknown as Team[]);
+            team_name,
+            color_hex,
+            players (
+                id,
+                name,
+                is_captain
+            )
+            `)
+            .eq('session_id', sessionId);
+        
+        if (data) {
+            // We sort teams by creation date so the list doesn't jump around
+            setTeams(data as unknown as Team[]);
+        }
     };
 
     initializeRoom();
@@ -129,24 +131,29 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
                     </h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {team.players.map((player) => (
-                      <span key={player.id} className={`px-4 py-2 rounded-xl text-sm font-bold ${player.is_captain ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                        {player.name} {player.is_captain && '👑'}
-                      </span>
-                    ))}
-                  </div>
+                        {team.players && team.players.length > 0 ? (
+                            team.players.map((player) => (
+                            <span key={player.id} className={`px-3 py-1 rounded-lg text-sm font-bold ${player.is_captain ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                                {player.name} {player.is_captain && '👑'}
+                            </span>
+                            ))
+                        ) : (
+                            <span className="text-slate-500 italic text-xs">No one joined yet...</span>
+                        )}
+                    </div>
                 </div>
               ))
             )}
           </div>
 
           <button 
-            onClick={startGame}
-            disabled={teams.length === 0}
-            className="w-full bg-green-500 hover:bg-green-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 font-black py-6 rounded-4xl text-2xl transition-all shadow-xl active:scale-95"
-          >
-            {teams.length === 0 ? 'WAITING FOR TEAMS...' : 'START CHALLENGE'}
-          </button>
+        onClick={startGame}
+        // Change this to length > 0 so you can start with just 1 team to test!
+        disabled={teams.length < 1} 
+        className="..."
+        >
+        {teams.length === 0 ? 'WAITING FOR TEAMS...' : 'START CHALLENGE'}
+        </button>
         </div>
       </div>
     </div>
