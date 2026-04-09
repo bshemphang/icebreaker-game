@@ -146,13 +146,21 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
             )}
           </div>
 
-          <button 
+        <button 
         onClick={startGame}
-        // Change this to length > 0 so you can start with just 1 team to test!
+        // This allows you to start even with just 1 team (perfect for testing!)
         disabled={teams.length < 1} 
-        className="..."
+        className="w-full mt-8 bg-green-500 hover:bg-green-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 font-black py-6 rounded-4xl text-2xl transition-all shadow-xl shadow-green-900/20 active:scale-95 cursor-pointer flex items-center justify-center gap-3"
         >
-        {teams.length === 0 ? 'WAITING FOR TEAMS...' : 'START CHALLENGE'}
+        {teams.length === 0 ? (
+            <>
+            <span className="animate-pulse">⏳</span> WAITING FOR TEAMS...
+            </>
+        ) : (
+            <>
+            🚀 START CHALLENGE
+            </>
+        )}
         </button>
         </div>
       </div>
