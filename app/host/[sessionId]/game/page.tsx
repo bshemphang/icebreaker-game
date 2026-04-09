@@ -19,7 +19,7 @@ const BOARD_SPACES = [
   'Start', 'Move', 'Talk', 'Create', 'Wildcard',
   'Move', 'Talk', 'Create', 'Move', 'Talk',
   'Create', 'Wildcard', 'Move', 'Talk', 'Create',
-  'Move', 'Wildcard', 'Talk', 'Create', 'Finish'
+  'Move', 'Wildcard', 'Talk', 'Create', 'Session Complete' 
 ];
 
 export default function GameBoard({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -30,17 +30,27 @@ export default function GameBoard({ params }: { params: Promise<{ sessionId: str
   const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
 
   const handleLanding = useCallback(async (position: number) => {
-    const spaceType = BOARD_SPACES[position];
-    if (spaceType === 'Start' || spaceType === 'Finish') return;
+  const spaceType = BOARD_SPACES[position];
+  if (spaceType === 'Start') return; // Removed 'Finish' check
 
-    setIsMoving(true);
-    
-    // Fetch all active prompts for the specific category
-    const { data } = await supabase
-      .from('prompts')
-      .select('category, content')
-      .eq('category', spaceType === 'Wildcard' ? 'Move' : spaceType)
-      .eq('is_active', true);
+  setIsMoving(true);
+  
+  let categoryToFetch = spaceType;
+  if (spaceType === 'Wildcard') categoryToFetch = 'Move'; // Temporary logic
+  if (spaceType === 'Session Complete') {
+    setActivePrompt({ 
+        category: 'FINALE', 
+        content: "Mission Accomplished! You've successfully reset your thinking. Ready to start ideating?" 
+    });
+    setIsMoving(false);
+    return;
+  }
+
+  const { data } = await supabase
+    .from('prompts')
+    .select('category, content')
+    .eq('category', categoryToFetch)
+    .eq('is_active', true);
 
     if (data && data.length > 0) {
       // Pick a random prompt from the list
