@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+🎲 IceBreaker HQ
+High-energy, non-competitive digital board game to reset brains and build rapport prior to an ideation workshop.
 
-## Getting Started
+Running Locally
+1. Clone/Unzip repository.
+2. Install dependencies: npm install
+3. Create a .env.local file, with:
+   - NEXTPUBLICSUPABASEURL=yoururl
+   - NEXTPUBLICSUPABASEANONKEY=your_key
+4. Start a development server: npm run dev
+5. Access the admin section: /admin
 
-First, run the development server:
+Features
+- Join instantly: Participants scan a QR code and do not need to install anything or sign up.
+- Role-based: Each team designates a "Captain" to roll dice and send challenges on the big screen, and everyone plays!
+- Admin panel: Facilitators can manage prompts-adding, removing, or turning them on/off.
+- Wildcard selection: The facilitator chooses the categories to use for the team challenges.
+- No competition: A clean way to kick off a workshop without adding any pressure.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Facilitator Guide
+1. Launch the application and create a session.
+2. Present the QR code on a large screen.
+3. Once the teams have joined, click Start Challenge.
+4. Use the Admin panel at /admin to pre-load any of your favorite prompts.
+5. The facilitator can stop the session whenever they are ready to move into the ideation phase.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Technical Assumptions
+1. Realtime Engine: Using Supabase Realtime to synchronise movements.
+2. Database for Session and Prompts: All session states and prompts are in a Supabase DB so we can recover a session or replay one.
+3. Responsive UI: Designing specifically for a shared projector (host) and phone displays (players).
