@@ -35,7 +35,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
     }
 
     const fetchData = async () => {
-      // Fetch Team Data
       const { data: teamData } = await supabase
         .from('teams')
         .select('*')
@@ -43,7 +42,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         .single();
       if (teamData) setMyTeam(teamData as Team);
 
-      // Fetch Initial Turn State
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('current_turn_team_id')
@@ -54,7 +52,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
 
     fetchData();
 
-    // REAL-TIME SYNC
     const channel = supabase
       .channel('player-sync')
       .on('postgres_changes', { 
@@ -74,10 +71,8 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         const newTurnId = payload.new.current_turn_team_id;
         setCurrentTurnId(newTurnId);
         
-        // CHALLENGE REQUIREMENT: Unlock button ONLY when turn switches
         setIsRolling(false); 
         
-        // Clear dice visual for a fresh turn
         if (newTurnId === teamId) {
           setLastRoll(null);
         }
@@ -90,10 +85,9 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
   const rollDice = async () => {
     const isMyTurn = myTeam?.id === currentTurnId;
     
-    // Safety check: Prevent spam, non-captains, or out-of-turn rolls
     if (!myTeam || isRolling || !isMyTurn || !isCaptain) return;
     
-    setIsRolling(true); // Lock immediately
+    setIsRolling(true); 
     
     const roll = Math.floor(Math.random() * 6) + 1;
     setLastRoll(roll);
@@ -107,7 +101,7 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
 
     if (error) {
       alert("Roll failed to sync!");
-      setIsRolling(false); // Only unlock if DB update fails
+      setIsRolling(false); 
     }
   };
 
@@ -142,10 +136,8 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         </div>
       </div>
 
-      {/* Action Center */}
       <div className="flex-1 flex flex-col items-center justify-center w-full space-y-10">
         
-        {/* Dice Result Juice */}
         {lastRoll && (
           <div className="animate-bounce">
             <span className="text-9xl font-black text-blue-500 italic drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">
@@ -156,7 +148,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
 
         {isCaptain ? (
           <div className="relative group">
-            {/* The Glow Effect when it's your turn */}
             {isMyTurn && !isRolling && (
               <div className="absolute inset-0 bg-blue-500 rounded-full blur-3xl opacity-20 animate-pulse" />
             )}
@@ -179,7 +170,6 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
             </button>
           </div>
         ) : (
-          /* Non-Captain View: Requirement #2 */
           <div className="text-center space-y-6">
             <div className="w-24 h-24 bg-slate-800 rounded-3xl flex items-center justify-center mx-auto border border-white/5 shadow-inner">
               <span className="text-4xl animate-pulse">⏳</span>
@@ -191,7 +181,7 @@ export default function Gamepad({ params }: { params: Promise<{ sessionId: strin
         )}
       </div>
 
-      {/* Footer Info / Role Badge */}
+      {/* Footer Info */}
       <div className="w-full bg-white/5 border border-white/10 p-5 rounded-[2.5rem] text-center backdrop-blur-md">
         <p className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-400/80">
           {isCaptain ? "👑 TEAM CAPTAIN" : "👥 CREW MEMBER"}

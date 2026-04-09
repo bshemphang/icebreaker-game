@@ -16,7 +16,6 @@ export default function Home() {
     setIsLoading(true);
     
     try {
-      // 1. Create a new session in the 'game_sessions' table
       const { data, error } = await supabase
         .from('game_sessions')
         .insert([{ 
@@ -28,12 +27,9 @@ export default function Home() {
 
       if (error) throw error;
 
-      // 2. UX: Save Host identity to local storage 
-      // This helps the app identify you as the Facilitator if you refresh
       localStorage.setItem('isHost', 'true');
       localStorage.setItem('facilitatorName', hostName.trim());
 
-      // 3. Move to the Host Lobby
       router.push(`/host/${data.id}`);
       
     } catch (error) {
@@ -84,10 +80,6 @@ export default function Home() {
             {isLoading ? 'Creating Room...' : 'CREATE SESSION'}
           </button>
         </form>
-
-        <p className="text-slate-600 text-sm font-bold tracking-widest uppercase">
-          Rapid MVP • Powered by Supabase
-        </p>
       </div>
     </main>
   );

@@ -14,7 +14,7 @@ interface Team {
   id: string;
   team_name: string;
   color_hex: string;
-  players: Player[]; // Fixed the 'any' by properly defining the nested array
+  players: Player[]; 
 }
 
 export default function HostWaitingRoom({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -53,7 +53,6 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
             .eq('session_id', sessionId);
         
         if (data) {
-            // We sort teams by creation date so the list doesn't jump around
             setTeams(data as unknown as Team[]);
         }
     };
@@ -90,7 +89,6 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
     if (error) {
         alert("Error: " + error.message);
     } else {
-        // FORCE REDIRECT FOR HOST
         window.location.href = `/host/${sessionId}/game`;
     }
     };
@@ -153,7 +151,6 @@ export default function HostWaitingRoom({ params }: { params: Promise<{ sessionI
 
         <button 
         onClick={startGame}
-        // This allows you to start even with just 1 team (perfect for testing!)
         disabled={teams.length < 1} 
         className="w-full mt-8 bg-green-500 hover:bg-green-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 font-black py-6 rounded-4xl text-2xl transition-all shadow-xl shadow-green-900/20 active:scale-95 cursor-pointer flex items-center justify-center gap-3"
         >

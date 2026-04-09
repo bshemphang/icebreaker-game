@@ -16,7 +16,6 @@ export default function AdminDashboard() {
   const [newCategory, setNewCategory] = useState('Talk');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Function declarations are hoisted, preventing the error
   async function fetchPrompts() {
     const { data, error } = await supabase
       .from('prompts')
@@ -25,15 +24,13 @@ export default function AdminDashboard() {
     
     if (error) console.error("Error fetching prompts:", error);
     if (data) setPrompts(data as Prompt[]);
-    setIsLoading(false); // Only set loading to false AFTER data arrives
+    setIsLoading(false); 
   }
 
-  // 2. Update the useEffect to be "Sync-Safe"
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
-      // We still want to show loading initially
       if (isMounted) {
         const { data } = await supabase
           .from('prompts')
